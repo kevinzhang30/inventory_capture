@@ -1,0 +1,16 @@
+region             = "us-east-1"
+name               = "invcap-dev"
+alert_email        = "you@example.com"
+extractor          = "bedrock"
+bedrock_model_id   = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+monthly_budget_usd = 150
+
+# Web app (Amplify) — optional; needs a GitHub repo and a token with repo scope.
+enable_amplify       = false
+amplify_repository   = "https://github.com/your-org/inventory-capture"
+amplify_access_token = ""
+web_callback_urls    = ["http://localhost:3000/api/auth/callback/cognito"]
+
+# CI deploys via OIDC
+create_github_oidc = false
+github_repo        = "your-org/inventory-capture"

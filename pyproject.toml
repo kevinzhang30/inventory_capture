@@ -1,0 +1,29 @@
+# Repo-wide tool configuration. Each package has its own pyproject.toml.
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["apps/web", "infra", ".venv", "dist", "build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "BLE", "SIM"]
+ignore = ["SIM105"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "inventory_common", "capture_client", "inventory_desktop", "ingest", "extract", "outbox_relay",
+  "review_dispatcher", "cache_updater", "indexer", "reorder_checker", "core_api", "eval_nightly", "ops",
+  "evalkit", "simulator", "gateway", "seed", "migrations",
+]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+addopts = "-q"
+markers = ["integration: needs the docker-compose stack (make up)"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body"]

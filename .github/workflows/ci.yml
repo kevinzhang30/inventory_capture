@@ -1,0 +1,90 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: scripts/dev_install.sh
+      - run: .venv/bin/ruff check libs services local/gateway eval loadtest/simulator apps/desktop db
+      - name: mypy
+        run: |
+          pkgs=""
+          for s in services/*; do pkgs="$pkgs $s/$(basename $s)"; done
+          .venv/bin/mypy libs/common/inventory_common $pkgs
+      - name: unit tests
+        run: |
+          .venv/bin/pytest -m "not integration" libs services local/gateway eval loadtest/simulator
+          PYTHONPATH=apps/desktop .venv/bin/pytest apps/desktop/tests
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      AUTH_MODE: dev
+      NEXTAUTH_SECRET: ci-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - run: terraform fmt -check -recursive infra
+      - run: terraform -chdir=infra/envs/dev init -backend=false
+      - run: terraform -chdir=infra/envs/dev validate
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [python]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: scripts/dev_install.sh
+      - name: start stack
+        run: |
+          docker compose -f local/docker-compose.yml --profile app up -d --build
+          for i in $(seq 1 120); do curl -fs localhost:8080/health && break; sleep 3; done
+          curl -fs localhost:8080/health
+      - name: smoke (scan → stock visible)
+        run: local/scripts/smoke.sh
+      - name: integration tests
+        env:
+          DATABASE_URL: postgresql://inventory:inventory@localhost:5432/inventory
+        run: .venv/bin/pytest -m integration libs services
+      - name: ledger checks
+        run: local/scripts/verify.sh
+      - name: compose logs
+        if: failure()
+        run: docker compose -f local/docker-compose.yml --profile app logs --tail=200

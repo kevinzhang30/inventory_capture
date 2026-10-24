@@ -1,0 +1,13 @@
+output "api_url" { value = module.api.api_url }
+output "relay_ecr_repository_url" { value = module.ecs_relay.repository_url }
+output "captures_bucket" { value = module.s3.bucket }
+output "cognito_user_pool_id" { value = module.cognito.user_pool_id }
+output "cognito_issuer" { value = module.cognito.issuer }
+output "cognito_web_client_id" { value = module.cognito.web_client_id }
+output "cognito_desktop_client_id" { value = module.cognito.desktop_client_id }
+output "cognito_hosted_ui_domain" { value = module.cognito.hosted_ui_domain }
+output "dashboard_url" { value = module.observability.dashboard_url }
+output "kafka_dlq_url" { value = aws_sqs_queue.kafka_dlq.url }
+output "web_url" { value = var.enable_amplify ? module.amplify[0].default_domain : null }
+output "github_deploy_role_arn" { value = var.create_github_oidc ? module.github_oidc[0].role_arn : null }
+output "bootstrap_result" { value = jsondecode(aws_lambda_invocation.bootstrap.result) }

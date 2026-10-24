@@ -1,0 +1,222 @@
+name: invcap
+
+x-app-env: &app-env
+  APP_ENV: local
+  LOG_LEVEL: INFO
+  DATABASE_URL: postgresql://inventory:inventory@postgres:5432/inventory
+  KAFKA_BOOTSTRAP: kafka:29092
+  REDIS_URL: redis://valkey:6379/0
+  RABBITMQ_URL: amqp://inventory:inventory@rabbitmq:5672/%2F
+  OPENSEARCH_URL: http://opensearch:9200
+  S3_BUCKET: captures
+  S3_ENDPOINT_URL: http://s3:9090
+  S3_PUBLIC_ENDPOINT_URL: http://localhost:9000
+  AWS_ACCESS_KEY_ID: local
+  AWS_SECRET_ACCESS_KEY: local
+  AWS_REGION: us-east-1
+  EXTRACTOR: ${EXTRACTOR:-stub}
+  BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-anthropic.claude-sonnet-4-5-20250929-v1:0}
+  AUTH_MODE: dev
+  CORS_ORIGINS: http://localhost:3000
+
+x-app: &app
+  image: invcap-python:local
+  restart: unless-stopped
+  profiles: ["app"]
+  environment: *app-env
+  depends_on:
+    bootstrap:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: inventory
+      POSTGRES_PASSWORD: inventory
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql]  # 18+ images keep data in /var/lib/postgresql/18/docker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory -d inventory"]
+      interval: 3s
+      retries: 30
+
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      CLUSTER_ID: invcap-local-kraft-01
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:9093,PLAINTEXT_HOST://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 12
+    ports: ["9092:9092"]
+    volumes: [kafkadata:/var/lib/kafka/data]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: inventory
+      RABBITMQ_DEFAULT_PASS: inventory
+    ports: ["5672:5672", "15672:15672"]
+    volumes: [rabbitdata:/var/lib/rabbitmq]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      retries: 30
+
+  valkey:
+    image: valkey/valkey:8
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 3s
+      retries: 30
+
+  opensearch:
+    image: opensearchproject/opensearch:3.5.0
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ports: ["9200:9200"]
+    volumes: [osdata:/usr/share/opensearch/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs localhost:9200/_cluster/health >/dev/null"]
+      interval: 5s
+      retries: 40
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.5.0
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    ports: ["5601:5601"]
+    profiles: ["tools"]
+    depends_on: [opensearch]
+
+  # S3-compatible store (MinIO images are no longer publicly pullable). Signatures are not verified locally.
+  s3:
+    image: adobe/s3mock:3.11.0
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /data
+    ports: ["9000:9090"]
+    volumes: [s3data:/data]
+
+  # ---------------------------------------------------------------- application (profile "app")
+  python-image:
+    image: invcap-python:local
+    build:
+      context: ..
+      dockerfile: local/Dockerfile.python
+    profiles: ["app"]
+    entrypoint: ["true"]
+
+  bootstrap:
+    image: invcap-python:local
+    profiles: ["app"]
+    environment: *app-env
+    command: ["python", "-m", "ops.bootstrap", "bucket", "migrate", "topics", "rabbitmq", "indices", "seed"]
+    restart: on-failure
+    depends_on:
+      python-image: {condition: service_completed_successfully}
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+      opensearch: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+      s3: {condition: service_started}
+
+  gateway:
+    <<: *app
+    command: ["uvicorn", "gateway.app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
+    ports: ["8080:8080"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      retries: 30
+
+  outbox-relay:
+    <<: *app
+    command: ["python", "-m", "outbox_relay.main"]
+
+  extract:
+    <<: *app
+    command: ["python", "-m", "inventory_common.local.kafka_runner", "--topic", "captures.raw", "--group", "extract",
+              "--handler", "extract.handler.handler", "--batch-size", "100"]
+
+  cache-updater:
+    <<: *app
+    command: ["python", "-m", "inventory_common.local.kafka_runner", "--topic", "inventory.events",
+              "--group", "cache-updater", "--handler", "cache_updater.handler.handler", "--batch-size", "500",
+              "--max-wait-ms", "100"]
+
+  indexer:
+    <<: *app
+    command: ["python", "-m", "inventory_common.local.kafka_runner", "--topic", "inventory.events",
+              "--group", "indexer", "--handler", "indexer.handler.handler", "--batch-size", "500"]
+
+  reorder-checker:
+    <<: *app
+    command: ["python", "-m", "inventory_common.local.kafka_runner", "--topic", "inventory.events",
+              "--group", "reorder-checker", "--handler", "reorder_checker.handler.handler", "--batch-size", "500"]
+
+  review-dispatcher:
+    <<: *app
+    command: ["python", "-m", "inventory_common.local.rmq_runner", "--queue", "review.dispatch",
+              "--handler", "review_dispatcher.handler.handler"]
+
+  reorder-worker:
+    <<: *app
+    command: ["python", "-m", "inventory_common.local.rmq_runner", "--queue", "reorder.request",
+              "--handler", "review_dispatcher.reorder.handler"]
+
+  notify-worker:
+    <<: *app
+    command: ["python", "-m", "inventory_common.local.rmq_runner", "--queue", "notify",
+              "--handler", "review_dispatcher.notify.handler"]
+
+  review-reaper:
+    <<: *app
+    command: ["python", "-m", "review_dispatcher.reaper", "--loop", "--interval", "30"]
+
+  web:
+    image: node:20-bookworm
+    profiles: ["web"]
+    working_dir: /app
+    command: ["sh", "-c", "npm ci && npm run dev -- --hostname 0.0.0.0"]
+    environment:
+      API_BASE_URL: http://gateway:8080
+      AUTH_MODE: dev
+      NEXTAUTH_SECRET: local-dev-secret
+      NEXTAUTH_URL: http://localhost:3000
+    ports: ["3000:3000"]
+    volumes:
+      - ../apps/web:/app
+      - webmodules:/app/node_modules
+    depends_on:
+      gateway: {condition: service_healthy}
+
+volumes:
+  pgdata:
+  kafkadata:
+  rabbitdata:
+  osdata:
+  s3data:
+  webmodules:

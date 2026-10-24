@@ -1,0 +1,258 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 840" width="1440" height="840" role="img" aria-label="Clients call API Gateway, which invokes the ingest and core_api Lambdas. Ingest produces to the captures.raw Kafka topic; extract consumes it, calls Bedrock, and writes rows plus an outbox to Aurora. The outbox relay on ECS publishes events to the inventory.events topic and commands to RabbitMQ. Three Lambdas project inventory.events into Valkey, OpenSearch and reorder requests; RabbitMQ workers dispatch reviews, reorders and SNS notifications.">
+        <style>
+  svg { --bg:#ffffff; --surface:#ffffff; --surface-2:#e9ece8; --ink:#1b2220; --ink-2:#3b4642; --muted:#65706b; --line:#cbd1cd;
+        --accent:#b9530b; --accent-fill:#fbeee2; --store:#36657f; --store-fill:#e3edf3; }
+  @media (prefers-color-scheme: dark) {
+    svg { --bg:#1b2120; --surface:#1b2120; --surface-2:#232a28; --ink:#e5eae7; --ink-2:#b6c0bb; --muted:#8a958f; --line:#35403c;
+          --accent:#ef8a3f; --accent-fill:#36241a; --store:#84b6d3; --store-fill:#1a2a33; }
+  }
+  .bg { fill: var(--bg); }
+  .box { fill: var(--surface); stroke: var(--ink-2); stroke-width: 1.3; }
+  .box.ext { fill: var(--surface-2); stroke: var(--muted); stroke-dasharray: 4 3; }
+  .box.store { fill: var(--store-fill); stroke: var(--store); stroke-width: 1.5; }
+  .box.stream { fill: var(--accent-fill); stroke: var(--accent); stroke-width: 1.5; }
+  .box.mq { fill: var(--surface); stroke: var(--accent); stroke-width: 1.5; }
+  .rule { stroke: var(--line); stroke-width: 1; }
+  .vpc { fill: none; stroke: var(--store); stroke-width: 1.2; stroke-dasharray: 2 4; }
+  .nm { font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; font-weight: 600; fill: var(--ink); }
+  .sb { font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: var(--muted); }
+  .zone { font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10.5px; letter-spacing: .08em; fill: var(--muted); }
+  .zone.vpc-l { fill: var(--store); }
+  .mid { text-anchor: middle; } .end { text-anchor: end; }
+  .e { fill: none; stroke: var(--ink-2); stroke-width: 1.4; }
+  .e.async { stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 6 4; }
+  .el { font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 10.5px; fill: var(--ink-2);
+        paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+  .el.async { fill: var(--accent); }
+  .ah { fill: var(--ink-2); } .ah.async { fill: var(--accent); }
+</style>
+        <rect class="bg" x="0" y="0" width="1440" height="840"/>
+        <defs>
+          <marker id="a-sync" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="ah" d="M0 0 L10 5 L0 10 z"/>
+          </marker>
+          <marker id="a-async" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="ah async" d="M0 0 L10 5 L0 10 z"/>
+          </marker>
+        </defs>
+
+        <!-- ============ zones ============ -->
+        <rect class="vpc" x="395" y="132" width="870" height="690" rx="10"/>
+        <text class="zone vpc-l" x="412" y="153">VPC · PRIVATE SUBNETS, 2 AZS</text>
+        <text class="zone" x="420" y="62">REGIONAL SERVICES</text>
+        <text class="zone" x="420" y="78">VIA VPC ENDPOINTS</text>
+        <text class="zone" x="20" y="160">CLIENTS</text>
+
+        <!-- ============ legend ============ -->
+        <rect class="box" x="1080" y="36" width="26" height="16" rx="3"/>
+        <text class="sb" x="1114" y="48">Lambda / ECS</text>
+        <rect class="box store" x="1200" y="36" width="26" height="16" rx="3"/>
+        <text class="sb" x="1234" y="48">data store</text>
+        <rect class="box stream" x="1310" y="36" width="26" height="16" rx="8"/>
+        <text class="sb" x="1344" y="48">topic / queue</text>
+        <line class="e" x1="1080" y1="80" x2="1104" y2="80" marker-end="url(#a-sync)"/>
+        <text class="sb" x="1114" y="84">sync call</text>
+        <line class="e async" x1="1200" y1="80" x2="1224" y2="80" marker-end="url(#a-async)"/>
+        <text class="sb" x="1234" y="84">async message</text>
+        <rect class="box ext" x="1310" y="72" width="26" height="16" rx="3"/>
+        <text class="sb" x="1344" y="84">managed service</text>
+
+        <!-- ============ edges (drawn first so boxes sit on top) ============ -->
+        <!-- Cognito -> Desktop -->
+        <line class="e" x1="95" y1="96" x2="95" y2="168" marker-end="url(#a-sync)"/>
+        <text class="el" x="103" y="137">sign-in → JWT</text>
+        <!-- Desktop -> S3 direct upload -->
+        <path class="e" d="M150 170 V116 H720 V98" marker-end="url(#a-sync)"/>
+        <text class="el" x="432" y="110">PUT image · presigned URL</text>
+        <!-- clients -> API GW -->
+        <line class="e" x1="170" y1="198" x2="213" y2="198" marker-end="url(#a-sync)"/>
+        <text class="el mid" x="192" y="190">HTTPS</text>
+        <line class="e" x1="170" y1="335" x2="213" y2="335" marker-end="url(#a-sync)"/>
+        <text class="el mid" x="192" y="327">HTTPS</text>
+        <!-- API GW -> lambdas -->
+        <line class="e" x1="355" y1="198" x2="418" y2="198" marker-end="url(#a-sync)"/>
+        <text class="el mid" x="387" y="190">invoke</text>
+        <line class="e" x1="355" y1="335" x2="418" y2="335" marker-end="url(#a-sync)"/>
+        <text class="el mid" x="387" y="327">invoke</text>
+        <!-- ingest -> captures.raw -->
+        <line class="e async" x1="580" y1="198" x2="638" y2="198" marker-end="url(#a-async)"/>
+        <text class="el async mid" x="610" y="190">produce</text>
+        <!-- captures.raw -> extract -->
+        <line class="e async" x1="800" y1="198" x2="858" y2="198" marker-end="url(#a-async)"/>
+        <text class="el async mid" x="830" y="190">ESM ×100</text>
+        <!-- extract -> Bedrock -->
+        <line class="e" x1="940" y1="170" x2="940" y2="98" marker-end="url(#a-sync)"/>
+        <text class="el" x="948" y="150">InvokeModel</text>
+        <!-- extract -> S3 -->
+        <line class="e" x1="882" y1="170" x2="790" y2="99" marker-end="url(#a-sync)"/>
+        <text class="el end" x="826" y="150">GET image</text>
+        <!-- extract -> Aurora -->
+        <line class="e" x1="900" y1="226" x2="764" y2="298" marker-end="url(#a-sync)"/>
+        <text class="el" x="846" y="266">one txn: rows + outbox</text>
+        <!-- core_api <-> Aurora -->
+        <line class="e" x1="582" y1="335" x2="638" y2="335" marker-start="url(#a-sync)" marker-end="url(#a-sync)"/>
+        <text class="el mid" x="610" y="327">SQL</text>
+        <!-- Aurora -> relay -->
+        <line class="e" x1="800" y1="335" x2="858" y2="335" marker-end="url(#a-sync)"/>
+        <text class="el mid" x="830" y="327">outbox</text>
+        <!-- relay -> RabbitMQ -->
+        <line class="e async" x1="1020" y1="335" x2="1078" y2="335" marker-end="url(#a-async)"/>
+        <text class="el async mid" x="1050" y="327">commands</text>
+        <!-- relay -> inventory.events -->
+        <line class="e async" x1="940" y1="370" x2="940" y2="558" marker-end="url(#a-async)"/>
+        <text class="el async" x="948" y="470">produce events</text>
+        <!-- core_api -> Valkey -->
+        <line class="e" x1="500" y1="372" x2="500" y2="438" marker-start="url(#a-sync)" marker-end="url(#a-sync)"/>
+        <text class="el end" x="492" y="410">stock · leases</text>
+        <!-- core_api -> OpenSearch -->
+        <line class="e" x1="566" y1="370" x2="664" y2="438" marker-end="url(#a-sync)"/>
+        <text class="el" x="628" y="412">search</text>
+        <!-- inventory.events fan-out bus -->
+        <path class="e async" d="M940 616 V655 H500"/>
+        <line class="e async" x1="500" y1="655" x2="500" y2="618" marker-end="url(#a-async)"/>
+        <line class="e async" x1="720" y1="655" x2="720" y2="618" marker-end="url(#a-async)"/>
+        <line class="e async" x1="940" y1="655" x2="940" y2="688" marker-end="url(#a-async)"/>
+        <text class="el async mid" x="830" y="648">ESM · 3 consumer groups</text>
+        <!-- consumers -> stores -->
+        <line class="e" x1="500" y1="560" x2="500" y2="498" marker-end="url(#a-sync)"/>
+        <text class="el" x="508" y="532">write stock</text>
+        <line class="e" x1="720" y1="560" x2="720" y2="498" marker-end="url(#a-sync)"/>
+        <text class="el" x="728" y="532">bulk index</text>
+        <!-- reorder_checker -> RabbitMQ -->
+        <path class="e async" d="M1020 718 H1050 V520 H1078" marker-end="url(#a-async)"/>
+        <text class="el async mid" transform="translate(1044 640) rotate(-90)">publish</text>
+        <!-- RabbitMQ -> workers -->
+        <line class="e async" x1="1160" y1="540" x2="1160" y2="588" marker-end="url(#a-async)"/>
+        <text class="el async" x="1168" y="569">ESM</text>
+        <!-- notify_worker -> SNS -->
+        <line class="e" x1="1240" y1="758" x2="1293" y2="758" marker-end="url(#a-sync)"/>
+        <text class="el mid" x="1267" y="750">publish</text>
+        <!-- Scheduler -> jobs -->
+        <line class="e" x1="355" y1="745" x2="418" y2="745" marker-end="url(#a-sync)"/>
+        <text class="el mid" x="387" y="737">invoke</text>
+
+        <!-- ============ regional services ============ -->
+        <rect class="box ext" x="20" y="40" width="150" height="56" rx="5"/>
+        <text class="nm mid" x="95" y="63">Cognito</text>
+        <text class="sb mid" x="95" y="81">operator · reviewer · admin</text>
+
+        <rect class="box ext" x="640" y="40" width="160" height="56" rx="5"/>
+        <text class="nm mid" x="720" y="63">S3 captures</text>
+        <text class="sb mid" x="720" y="81">SSE-KMS · IA after 30 days</text>
+
+        <rect class="box ext" x="860" y="40" width="160" height="56" rx="5"/>
+        <text class="nm mid" x="940" y="63">Bedrock</text>
+        <text class="sb mid" x="940" y="81">Claude reads packing slips</text>
+
+        <!-- ============ clients ============ -->
+        <rect class="box" x="20" y="170" width="150" height="56" rx="5"/>
+        <text class="nm mid" x="95" y="193">Desktop app</text>
+        <text class="sb mid" x="95" y="211">operators: scan, photo</text>
+
+        <rect class="box" x="20" y="300" width="150" height="70" rx="5"/>
+        <text class="nm mid" x="95" y="323">Web app</text>
+        <text class="sb mid" x="95" y="341">Next.js SSR</text>
+        <text class="sb mid" x="95" y="357">Amplify (optional)</text>
+
+        <!-- ============ edge ============ -->
+        <rect class="box ext" x="215" y="170" width="140" height="200" rx="5"/>
+        <text class="nm mid" x="285" y="252">API Gateway</text>
+        <text class="sb mid" x="285" y="270">HTTP API</text>
+        <text class="sb mid" x="285" y="286">Cognito JWT authorizer</text>
+        <text class="sb mid" x="285" y="302">throttled · access logs</text>
+
+        <rect class="box ext" x="215" y="717" width="140" height="56" rx="5"/>
+        <text class="nm mid" x="285" y="740">EventBridge</text>
+        <text class="sb mid" x="285" y="758">Scheduler</text>
+
+        <!-- ============ VPC: row A ============ -->
+        <rect class="box" x="420" y="170" width="160" height="56" rx="5"/>
+        <text class="nm mid" x="500" y="193">ingest</text>
+        <text class="sb mid" x="500" y="211">POST /uploads · /captures</text>
+
+        <rect class="box stream" x="640" y="170" width="160" height="56" rx="28"/>
+        <text class="nm mid" x="720" y="193">captures.raw</text>
+        <text class="sb mid" x="720" y="211">MSK Serverless · IAM</text>
+
+        <rect class="box" x="860" y="170" width="160" height="56" rx="5"/>
+        <text class="nm mid" x="940" y="193">extract</text>
+        <text class="sb mid" x="940" y="211">λ · reserved concurrency</text>
+
+        <!-- ============ VPC: row B ============ -->
+        <rect class="box" x="420" y="300" width="160" height="70" rx="5"/>
+        <text class="nm mid" x="500" y="323">core_api</text>
+        <text class="sb mid" x="500" y="341">FastAPI on Lambda</text>
+        <text class="sb mid" x="500" y="357">every other route</text>
+
+        <rect class="box store" x="640" y="300" width="160" height="70" rx="5"/>
+        <text class="nm mid" x="720" y="323">Aurora Postgres 18</text>
+        <text class="sb mid" x="720" y="341">Serverless v2, pauses at 0</text>
+        <text class="sb mid" x="720" y="357">system of record + outbox</text>
+
+        <rect class="box" x="860" y="300" width="160" height="70" rx="5"/>
+        <text class="nm mid" x="940" y="323">outbox_relay</text>
+        <text class="sb mid" x="940" y="341">ECS Fargate · 1 task</text>
+        <text class="sb mid" x="940" y="357">image from ECR</text>
+
+        <rect class="box mq" x="1080" y="300" width="160" height="240" rx="6"/>
+        <text class="nm mid" x="1160" y="323">Amazon MQ</text>
+        <text class="sb mid" x="1160" y="341">RabbitMQ 3.13 · 1 node</text>
+        <rect class="box stream" x="1096" y="358" width="128" height="30" rx="15"/>
+        <text class="nm mid" x="1160" y="378" style="font-size:11.5px">review.dispatch</text>
+        <rect class="box stream" x="1096" y="400" width="128" height="30" rx="15"/>
+        <text class="nm mid" x="1160" y="420" style="font-size:11.5px">reorder.request</text>
+        <rect class="box stream" x="1096" y="442" width="128" height="30" rx="15"/>
+        <text class="nm mid" x="1160" y="462" style="font-size:11.5px">notify</text>
+        <text class="sb mid" x="1160" y="500">each with .retry (15 s)</text>
+        <text class="sb mid" x="1160" y="516">and .dlq queues</text>
+
+        <!-- ============ VPC: row C (stores) ============ -->
+        <rect class="box store" x="420" y="440" width="160" height="56" rx="5"/>
+        <text class="nm mid" x="500" y="463">Valkey 8</text>
+        <text class="sb mid" x="500" y="481">stock cache · review queue</text>
+
+        <rect class="box store" x="640" y="440" width="160" height="56" rx="5"/>
+        <text class="nm mid" x="720" y="463">OpenSearch 3.5</text>
+        <text class="sb mid" x="720" y="481">parts · documents · 1 node</text>
+
+        <!-- ============ VPC: row D (projections) ============ -->
+        <rect class="box" x="420" y="560" width="160" height="56" rx="5"/>
+        <text class="nm mid" x="500" y="583">cache_updater</text>
+        <text class="sb mid" x="500" y="601">λ · batch 500</text>
+
+        <rect class="box" x="640" y="560" width="160" height="56" rx="5"/>
+        <text class="nm mid" x="720" y="583">indexer</text>
+        <text class="sb mid" x="720" y="601">λ · batch 500</text>
+
+        <rect class="box stream" x="860" y="560" width="160" height="56" rx="28"/>
+        <text class="nm mid" x="940" y="583">inventory.events</text>
+        <text class="sb mid" x="940" y="601">MSK · keyed by sku</text>
+
+        <rect class="box" x="860" y="690" width="160" height="56" rx="5"/>
+        <text class="nm mid" x="940" y="713">reorder_checker</text>
+        <text class="sb mid" x="940" y="731">λ · below reorder point?</text>
+
+        <!-- ============ VPC: MQ workers ============ -->
+        <rect class="box" x="1080" y="590" width="160" height="210" rx="6"/>
+        <text class="zone" x="1096" y="612">MQ WORKER λS</text>
+        <text class="nm" x="1096" y="638">review_dispatcher</text>
+        <text class="sb" x="1096" y="655">→ Valkey ready queue</text>
+        <line class="rule" x1="1092" y1="670" x2="1228" y2="670"/>
+        <text class="nm" x="1096" y="694">reorder_worker</text>
+        <text class="sb" x="1096" y="711">→ Aurora outbox: notify</text>
+        <line class="rule" x1="1092" y1="726" x2="1228" y2="726"/>
+        <text class="nm" x="1096" y="752">notify_worker</text>
+        <text class="sb" x="1096" y="769">→ SNS</text>
+
+        <!-- ============ VPC: scheduled + ops ============ -->
+        <rect class="box" x="420" y="700" width="380" height="100" rx="6"/>
+        <text class="zone" x="436" y="722">SCHEDULED + OPS λS</text>
+        <text class="sb" x="436" y="746"><tspan class="nm" style="font-size:11.5px">review_reaper</tspan>  every minute · expires review leases</text>
+        <text class="sb" x="436" y="766"><tspan class="nm" style="font-size:11.5px">eval_nightly</tspan>  07:00 UTC · golden-set accuracy</text>
+        <text class="sb" x="436" y="786"><tspan class="nm" style="font-size:11.5px">ops</tspan>  each deploy · migrate, topics, queues, indices</text>
+
+        <!-- ============ outside right ============ -->
+        <rect class="box ext" x="1295" y="730" width="125" height="56" rx="5"/>
+        <text class="nm mid" x="1357" y="753">SNS notify</text>
+        <text class="sb mid" x="1357" y="771">reorder alerts</text>
+      </svg>

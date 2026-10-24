@@ -1,0 +1,16 @@
+[project]
+name = "inventory-evalkit"
+version = "0.1.0"
+description = "Offline golden-set evaluation for extraction prompts and models"
+requires-python = ">=3.12"
+dependencies = ["inventory-common", "inventory-extract", "inventory-eval-nightly", "capture-client", "inventory-db"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["evalkit"]

@@ -1,0 +1,6 @@
+# cp backend.hcl.example backend.hcl and fill in. The state bucket is created once, outside this stack.
+bucket         = "my-terraform-state-bucket"
+key            = "inventory-capture/dev/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "terraform-locks"
+encrypt        = true
